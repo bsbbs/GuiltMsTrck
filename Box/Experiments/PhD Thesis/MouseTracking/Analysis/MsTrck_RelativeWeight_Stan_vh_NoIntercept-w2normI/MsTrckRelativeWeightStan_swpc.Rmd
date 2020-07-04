@@ -1,0 +1,200 @@
+---
+title: "Mouse Tracking"
+author: "Bo Shen"
+date: "2019/01/03"
+output:
+html_notebook: default
+---
+
+
+## loading packages
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# require(R.matlab)
+# require(lmerTest)
+# require(maxLik)
+require(Rmisc)
+require(brms)
+require(rstan)
+rm(list=ls())
+plotdir <- 'E:/ShenBo/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI'
+datadir <- 'E:/ShenBo/MouseTracking/Analysis/data37_100_interp'
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = 'E:/ShenBo/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI')
+getwd()
+```
+
+## loading mstrck data
+```{r}
+load(file.path(datadir,'allsubjmstrckdat.RData'))
+# load(file.path(datadir,'allsubjdat.RData'))
+```
+## Stan funciton estimation
+```{r}
+cond <- 'swpc'
+mydatall <- allsubjmstrckdat[allsubjmstrckdat$condition == cond,]
+estparams <- c()
+fwer.mu <- c()
+se.mu <- c()
+for (time in 1:100)
+{
+  mydat <- mydatall[mydatall$time == time & !is.nan(mydatall$angle),]
+  deltatrnspraw <- aggregate(deltatrnsp ~ trial + subid, data = mydat, FUN = unique) # range -98.115, 100
+  deltacompraw <- aggregate(deltacomp ~ trial + subid, data = mydat, FUN = unique) # range -10 10
+  NTrialraw <- aggregate(trial ~ subid, data = deltatrnspraw, FUN = length)
+  Nsubj <- length(unique(NTrialraw$subid))
+  NTrial <- NTrialraw$trial
+  maxNtrial <- max(NTrial)
+  deltatrnsp <- matrix(rep(rep(0,maxNtrial),Nsubj),Nsubj,maxNtrial)
+  deltacomp <- matrix(rep(rep(0,maxNtrial),Nsubj),Nsubj,maxNtrial)
+  angle <- array(rep(0,maxNtrial*Nsubj), c(Nsubj,maxNtrial))
+  subid <- 0
+  for (subj in unique(deltatrnspraw$subid))
+  {
+    subid <- subid + 1
+    deltatrnsp[subid,1:NTrial[subid]] <- deltatrnspraw$deltatrnsp[deltatrnspraw$subid == subj]/100
+    deltacomp[subid,1:NTrial[subid]] <- deltacompraw$deltacomp[deltacompraw$subid == subj]/10
+    trialid <- 0
+    for (trial in unique(mydat$trial[mydat$subid == subj]))
+    {
+      trialid <- trialid + 1
+      angle[subid,trialid] <- mydat$vh[mydat$subid == subj & mydat$trial == trial & mydat$time == time]/500 # -3146.963  2957.326
+    }
+  }
+  mydata <- list(Nsubj,NTrial,maxNtrial, deltatrnsp, deltacomp, angle)
+  
+  # fitpre <- rstan::stan(file = file.path(plotdir,'RelativeWeight_normI.stan'),data=mydata,iter=10,chains=1,cores=1, pars = c('mu_beta','mu_w1','mu_w2','mu_b1','mu_b2','beta','w1','w2','b1','b2','log_lik','LL_all')) #
+  # print(fitpre)
+  fit <- rstan::stan(file = file.path(plotdir,'RelativeWeight_normI.stan'),data=mydata,warmup = 1000,iter=2000,chains=8,cores=8,pars = c('mu_beta','mu_w1','mu_w2','mu_b1','mu_b2','beta','w1','w2','b1','b2','log_lik','LL_all'))
+  estparams <- rbind(estparams,data.frame(summary(fit)[[1]], time = time))
+  hypotest.beta <- hypothesis(fit, 'mu_beta = 0', alpha = 0.0033)
+  hypotest.b1 <- hypothesis(fit, 'mu_b1 = 0', alpha = 0.0025)
+  hypotest.b2 <- hypothesis(fit, 'mu_b2 = 0', alpha = 0.0022)
+  hypotest.w1 <- hypothesis(fit, 'mu_w1 = 0', alpha = 0.0025)
+  hypotest.w2 <- hypothesis(fit, 'mu_w2 = 0', alpha = 0.0025)
+  
+  hypotest.beta.se <- hypothesis(fit, 'mu_beta = 0', alpha = 0.16)
+  hypotest.b1.se <- hypothesis(fit, 'mu_b1 = 0', alpha = 0.16)
+  hypotest.b2.se <- hypothesis(fit, 'mu_b2 = 0', alpha = 0.16)
+  hypotest.w1.se <- hypothesis(fit, 'mu_w1 = 0', alpha = 0.16)
+  hypotest.w2.se <- hypothesis(fit, 'mu_w2 = 0', alpha = 0.16)
+  
+  
+  colnames(hypotest.b1[[1]]) <- colnames(hypotest.beta[[1]])
+  colnames(hypotest.b2[[1]]) <- colnames(hypotest.beta[[1]])
+  colnames(hypotest.w1[[1]]) <- colnames(hypotest.beta[[1]])
+  colnames(hypotest.w2[[1]]) <- colnames(hypotest.beta[[1]])
+  
+  colnames(hypotest.b1.se[[1]]) <- colnames(hypotest.beta.se[[1]])
+  colnames(hypotest.b2.se[[1]]) <- colnames(hypotest.beta.se[[1]])
+  colnames(hypotest.w1.se[[1]]) <- colnames(hypotest.beta.se[[1]])
+  colnames(hypotest.w2.se[[1]]) <- colnames(hypotest.beta.se[[1]])
+  fwer.mu <- rbind(fwer.mu,data.frame(hypotest.beta[[1]], time = time, cond = cond, param = 'beta'))
+  fwer.mu <- rbind(fwer.mu,data.frame(hypotest.b1[[1]], time = time, cond = cond, param = 'b1'))
+  fwer.mu <- rbind(fwer.mu,data.frame(hypotest.b2[[1]], time = time, cond = cond, param = 'b2'))
+  fwer.mu <- rbind(fwer.mu,data.frame(hypotest.w1[[1]], time = time, cond = cond, param = 'w1'))
+  fwer.mu <- rbind(fwer.mu,data.frame(hypotest.w2[[1]], time = time, cond = cond, param = 'w2'))
+  se.mu <- rbind(se.mu,data.frame(hypotest.beta.se[[1]], time = time, cond = cond, param = 'beta'))
+  se.mu <- rbind(se.mu,data.frame(hypotest.b1.se[[1]], time = time, cond = cond, param = 'b1'))
+  se.mu <- rbind(se.mu,data.frame(hypotest.b2.se[[1]], time = time, cond = cond, param = 'b2'))
+  se.mu <- rbind(se.mu,data.frame(hypotest.w1.se[[1]], time = time, cond = cond, param = 'w1'))
+  se.mu <- rbind(se.mu,data.frame(hypotest.w2.se[[1]], time = time, cond = cond, param = 'w2'))
+  save(fit, file = file.path(plotdir,sprintf('FitObj%s',cond),sprintf('MsTrckRelativeWeightStan_%s_time%i.RData',cond,time)))
+  # shinystan::launch_shinystan(fit)
+  # log_lik1 <- loo::extract_log_lik(fit)
+  # loo::loo(log_lik1)
+}
+save(estparams, file = file.path(plotdir,sprintf('MsTrckRelativeWeightStan_%s.RData',cond)))
+save(fwer.mu, file = file.path(plotdir,sprintf('fwer.mu_%s.RData',cond)))
+save(se.mu, file = file.path(plotdir,sprintf('se.mu_%s.RData',cond)))
+
+```
+
+```{r}
+# mu_beta <- c()
+# for (t in 1:100)
+# {
+#   mu_beta <- rbind(mu_beta,data.frame(fwer.mubeta[1+(t-1)*3,1],time=fwer.mubeta[2+(t-1)*3,1][[1]], cond = fwer.mubeta[3,1][[1]]))
+# }
+
+mu_beta <- estparams['mu_beta',]
+for (t in 1:99)
+{ rowname <- sprintf('mu_beta%i',t)
+mu_beta <- rbind(mu_beta,estparams[rowname,])
+}
+mu_w <- estparams['mu_w',]
+for (t in 1:99)
+{ rowname <- sprintf('mu_w%i',t)
+mu_w <- rbind(mu_w,estparams[rowname,])
+}
+mu_v <- estparams['mu_v',]
+for (t in 1:99)
+{ rowname <- sprintf('mu_v%i',t)
+mu_v <- rbind(mu_v,estparams[rowname,])
+}
+mu_b1 <- estparams['mu_b1',]
+for (t in 1:99)
+{ rowname <- sprintf('mu_b1%i',t)
+mu_b1 <- rbind(mu_b1,estparams[rowname,])
+}
+mu_b2 <- estparams['mu_b2',]
+for (t in 1:99)
+{ rowname <- sprintf('mu_b2%i',t)
+mu_b2 <- rbind(mu_b2,estparams[rowname,])
+}
+
+
+w <- c()
+for (time in 1:100)
+{
+  for (subj in 1:Nsubj)
+  {
+    if (time == 1)
+    {
+      tmpw <- estparams[sprintf('w[%i]',subj),]
+    }
+    if (time >=2)
+    {
+      tmpw <- estparams[sprintf('w[%i]%i',subj,time-1),]
+    }
+    w <- rbind(w,data.frame(subid = subj, time = time, w = tmpw))
+  }
+}
+
+greentrnsp <- rgb(0,255,0,127, maxColorValue = 255)
+redtrnssp <- rgb(255,0,0,127, maxColorValue = 255)
+yellowtrnsp <- rgb(255,255,0,127, maxColorValue = 255)
+cairo_pdf(file=file.path(plotdir,sprintf("TimeAxisfit_beta_%s.pdf",cond)),height=4, width=6)
+plot(mu_beta$time,mu_beta$Estimate, type = 'l', pch=20, ylim = c(0,max(mu_beta$X97.5.)), ylab = 'beta', xlab = 'time bin')
+polygon(c(1:100,100:1),c(mu_beta[,3],mu_beta[100:1,4]), border = NA, col = yellowtrnsp)
+lines(mu_beta$time,mu_beta$Estimate, lwd = 1.5)
+x <- 1:100
+locatemask <- (mu_beta[,3]) > 0.001
+sigpoint <- min(which(locatemask))
+vec <- rbind(mu_beta[,3],mu_beta[,4])
+if(sum(locatemask)){text(x[locatemask],sign(vec[1,locatemask])*(apply(abs(vec[,locatemask]),2,max)+0.02), labels = '*', col = 1)}
+dev.off()
+
+sigpoint.b2 <- min(which(mu_b2$`X97.5.`<0))
+sigpoint.b1 <- min(which(mu_b1$`X2.5.`>0))
+sigpoint.b <- max(sigpoint.b1,sigpoint.b2,80)
+cairo_pdf(file=file.path(plotdir,sprintf("TimeAxisfit_b1_%s.pdf",cond)),height=4, width=6)
+plot(mu_b1$time[locatemask],mu_b1$mean[locatemask], type = 'l', lwd = 1.5, xlim = c(1,100), ylim=c(-1.2,1.2), ylab = 'weight', xlab = 'time bin')
+polygon(c(sigpoint:100,100:sigpoint),c(mu_b1$`X2.5.`[sigpoint:100],mu_b1$`X97.5.`[100:sigpoint]), border = NA, col = greentrnsp)
+lines(sigpoint:100, rep(0,length(sigpoint:100)), lty=2)
+summary(test <- lm(mean ~ time, data = mu_b1[sigpoint.b:100,]))
+abline(coef = coef(test))
+dev.off()
+
+cairo_pdf(file=file.path(plotdir,sprintf("TimeAxisfit_b2_%s.pdf",cond)),height=4, width=6)
+plot(mu_b2$time[locatemask],mu_b2$mean[locatemask], type = 'l', lwd = 1.5, ylim=c(-1.2,1.2), xlim = c(1,100), ylab = 'weight', xlab = 'time bin')
+polygon(c(sigpoint:100,100:sigpoint),c(mu_b2$`X2.5.`[sigpoint:100],mu_b2$`X97.5.`[100:sigpoint]), border = NA, col = redtrnssp)
+lines(sigpoint:100, rep(0,length(sigpoint:100)), lty=2)
+summary(test <- lm(mean ~ time, data = mu_b2[sigpoint.b:100,]))
+abline(coef = coef(test))
+dev.off()
+
+```
+

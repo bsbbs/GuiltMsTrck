@@ -1,0 +1,77 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+source('E:/ShenBo/MouseTracking/Analysis/bootstrp.R')
+datadir <- 'E:/ShenBo/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/Bootstrapping'
+outdir <- c('p0.05','p0.01','p0.005','fwer')
+klist <- c(3,3,3,1)
+plist <- c(.05,.01,.005,NaN)
+for (bi in 3)
+{
+  plotdir <- file.path('E:/ShenBo/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/Bootstrapping',outdir[bi])
+  if (!dir.exists(plotdir)) {dir.create(plotdir)}
+  if (bi <= 3){threshlist <- rep(plist[bi],6)}else{load(file.path(datadir,'threshlist.RData'))}
+  kthreshold = klist[bi]
+  
+  thi <- 0
+  for (context in c('swpc','swpw','scpw')) # 
+  {
+    
+    load(sprintf('E:/ShenBo/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/fwer.mu_%s.RData',context))
+    thi <- thi + 1
+    if (!file.exists(file.path(plotdir, sprintf('boot.comp_%s.RData',context)))){
+      mask <- fwer.mu$cond == context & fwer.mu$param == 'w1'
+      condstat.comp <- fwer.mu[mask,]
+      obj.comp <- boot(data = condstat.comp, statistic = beta, pthreshold = threshlist[thi], kthreshold=kthreshold, direction = 1, R = 2000) 
+      save(obj.comp, file = file.path(plotdir, sprintf('boot.comp_%s.RData',context)))
+    }
+    thi <- thi + 1
+    if (!file.exists(file.path(plotdir, sprintf('boot.trnsp_%s.RData',context)))){
+      mask <- fwer.mu$cond == context & fwer.mu$param == 'w2'
+      condstat.trnsp <- fwer.mu[mask,]
+      obj.trnsp <- boot(data = condstat.trnsp, statistic = beta, pthreshold = threshlist[thi], kthreshold=kthreshold, direction = -1, R = 2000) 
+      save(obj.trnsp, file = file.path(plotdir, sprintf('boot.trnsp_%s.RData',context)))
+    }
+    if (!file.exists(file.path(plotdir,sprintf('BootStrap_%s.pdf',context)))){
+      t.comp <-  obj.comp$t
+      t.comp <- t.comp[t.comp<Inf]
+      t.trnsp <- obj.trnsp$t
+      t.trnsp <- t.trnsp[t.trnsp<Inf]
+      cairo_pdf(file = file.path(plotdir,sprintf('BootStrap_%s.pdf',context)),width=6,height=4, family = 'Microsoft YaHei', bg = 'transparent')
+      greentrnsp <- rgb(0,255,0,127, maxColorValue = 255)
+      redtrnsp <- rgb(255,0,0,127, maxColorValue = 255)
+      bins <- hist(t.comp)
+      bins2 <- hist(t.trnsp)
+      bins <- hist(t.comp, breaks = seq(0,100,5), ylim = c(0,max(c(bins$counts,bins2$counts))), col = greentrnsp, main = sprintf('%s',context), xlab = 'time bin', ylab = 'frequency')
+      par(new = TRUE)
+      bins2 <- hist(t.trnsp, breaks = seq(0,100,5),  ylim = c(0,max(c(bins$counts,bins2$counts))), col = redtrnsp, main = ' ', xlab = 'time bin', ylab = 'frequency')
+      legend('topleft',c('compensation','transperency'), pch = 22, pt.bg = c(greentrnsp,redtrnsp), pt.lwd = 1, bty='n', pt.cex = 2)
+      dev.off()
+    }
+  }
+}
+
+```
+# list results
+```{r}
+for (bi in 3)
+{
+  plotdir <- file.path('E:/ShenBo/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/Bootstrapping',outdir[bi])
+  for (context in  c('swpc','swpw','scpw'))
+  {
+    load(file.path(plotdir, sprintf('boot.comp_%s.RData',context)))
+    load(file.path(plotdir, sprintf('boot.trnsp_%s.RData',context)))
+    t.comp <-  obj.comp$t
+    t.comp <- t.comp[t.comp<Inf]
+    t.trnsp <- obj.trnsp$t
+    t.trnsp <- t.trnsp[t.trnsp<Inf]
+    print(table(obj.comp$t)[table(obj.comp$t) == max(table(obj.comp$t))])
+    print(table(obj.trnsp$t)[table(obj.trnsp$t) == max(table(obj.trnsp$t))])
+    print(t.test(t.comp, t.trnsp, paired=F))
+  }
+}
+```
+

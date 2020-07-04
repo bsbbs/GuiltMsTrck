@@ -1,0 +1,174 @@
+---
+title: "mouse tracking - goodness of fitting - vh - w2normI"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+rm(list=ls())
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '/Users/boshen/Box/Experiments/PhD Thesis/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/goodness of fitting')
+getwd()
+plotdir <- '/Users/boshen/Box/Experiments/PhD Thesis/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/goodness of fitting'
+```
+
+# loading mstrck data and its estimated parameters
+```{r}
+datadir <- '/Users/boshen/Box/Experiments/PhD Thesis/MouseTracking/data'
+load(file.path(datadir,'allsubjmstrckdat.RData'))
+allsubjmstrckdat$deltacomp <- allsubjmstrckdat$deltacomp/10
+allsubjmstrckdat$deltatrnsp <- allsubjmstrckdat$deltatrnsp/100
+load('/Users/boshen/Box/Experiments/PhD Thesis/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/Extract_RandomEffects/randeffs.RData')
+```
+
+# recalculate vh according to parameters of mstrck data
+```{r}
+subjlist <- unique(allsubjmstrckdat$subid)
+Nsubj <- length(subjlist)
+condi <- 0
+gof.dat <- c()
+for (cond in c('swpc','swpw','scpw'))
+{
+  condi <- condi + 1
+  sngcond.dat <- allsubjmstrckdat[allsubjmstrckdat$condition == cond,]
+  for (ti in 1:100)
+  {
+    sngt.dat <- sngcond.dat[sngcond.dat$time == ti,]
+    for (subj in 1:Nsubj)
+    {
+      tickdat <- sngt.dat[sngt.dat$subid == subjlist[subj],]
+      b1 <- randeffs$b1.mean[randeffs$condi == condi & randeffs$time == ti & randeffs$subid == subj]
+      b2 <- randeffs$b2.mean[randeffs$condi == condi & randeffs$time == ti & randeffs$subid == subj]
+      if (length(b1) & length(b2)) {vh.est <- (b1*tickdat$deltacomp + b2*tickdat$deltatrnsp)*500}else{vh.est = NaN*tickdat$deltacomp}
+      gof.dat <- rbind(gof.dat, data.frame(cond, time = ti, subj = subjlist[subj], vh = tickdat$vh, vh.est, trial = tickdat$trial))
+    }
+  }
+}
+
+save(gof.dat, file = '/Users/boshen/Box/Experiments/PhD Thesis/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/goodness of fitting/gof.dat.RData')
+
+gof.dattxt <- gof.dat[!is.na(gof.dat$vh.est),]
+gof.dattxt$cond <- as.numeric(gof.dattxt$cond)
+gof.dattxt$subj <- as.numeric(gof.dattxt$subj)
+write.table(gof.dattxt,file = "/Users/boshen/Box/Experiments/PhD Thesis/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/goodness of fitting/gof.dat.txt",row.names=F,append = FALSE, quote = F, sep = "\t", eol = "\n")
+```
+# plot the goodness of fitting
+```{r}
+require(plot3D)
+for (cond in c('swpc','swpw','scpw'))
+{
+  sngcond.dat <- gof.dat[gof.dat$cond == cond,]
+  plot3D::scatter3D(sngcond.dat$time, sngcond.dat$vh, sngcond.dat$vh.est, colvar = sngcond.dat$time, pch = 20, cex = 0.1)
+}
+
+ti <- 90
+sngt.dat <- sngcond.dat[sngcond.dat$time == ti,]
+plot(vh.est ~ vh, data = sngt.dat, pch = 20, cex = .3, col = sngt.dat$subj)
+for (subj in 1:Nsubj)
+{
+  tickdat <- sngt.dat[sngt.dat$subj == subjlist[subj],]
+  abline(coef(lm(vh.est ~ vh, data = tickdat)))
+}
+
+# R-square
+gof.dat$diff <- gof.dat$vh - gof.dat$vh.est
+TSS <- aggregate(vh ~ cond + time + subj, data = gof.dat, FUN = var)
+TSS.length <- aggregate(vh ~ cond + time + subj, data = gof.dat, FUN = length)
+TSS$vh <- TSS$vh*(TSS.length$vh - 1)
+TSS <- TSS[!(TSS$subj == subjlist[37] & TSS$cond == 'swpw' & TSS$time == 100),]
+RSS <- aggregate(diff ~ cond + time + subj, data = gof.dat, FUN = var)
+RSS.length <- aggregate(diff ~ cond + time + subj, data = gof.dat, FUN = length)
+RSS$diff <- RSS$diff * (RSS.length$diff - 1)
+RSS$diff[is.nan(RSS$diff)]
+mergedat <- merge(TSS, RSS, by = c("subj","cond","time"))
+tss <- aggregate(vh ~ cond + time, data = mergedat, FUN = sum)
+rss <- aggregate(diff ~ cond + time, data = mergedat, FUN = sum)
+for (cond in c('swpc','swpw','scpw'))
+{
+  plotdat <- tss[tss$cond == cond,]
+  plotdat$diff <- rss$diff[rss$cond == cond]
+  barplot((plotdat$vh - plotdat$diff)/plotdat$vh)
+}
+```
+
+# seperate according to subjective value
+```{r}
+# rescale speed
+allsubjmstrckdat
+for (subj in subjlist)
+{
+  allsubjmstrckdat$vh[allsubjmstrckdat$subid == subj] <- allsubjmstrckdat$vh[allsubjmstrckdat$subid == subj]/max(abs(allsubjmstrckdat$vh[allsubjmstrckdat$subid == subj]))
+}
+for (subj in subjlist)
+{
+  show(range(allsubjmstrckdat$vh[allsubjmstrckdat$subid == subj]))
+}
+
+# calculate subjective value
+allsubjmstrckdat$dSV <- 0
+condi <- 0
+for (cond in c('swpc','swpw','scpw'))
+{
+  condi <- condi + 1
+  sngcond.dat <- allsubjmstrckdat[allsubjmstrckdat$condition == cond,]
+  for (ti in 1:100)
+  {
+    sngt.dat <- sngcond.dat[sngcond.dat$time == ti,]
+    for (subj in 1:Nsubj)
+    {
+      tickdat <- sngt.dat[sngt.dat$subid == subjlist[subj],]
+      w1 <- randeffs$w1.mean[randeffs$condi == condi & randeffs$time == ti & randeffs$subid == subj]
+      w2 <- randeffs$w2.mean[randeffs$condi == condi & randeffs$time == ti & randeffs$subid == subj]
+      if (length(w1) & length(w2)) {dSV <- w1*tickdat$deltacomp + w2*tickdat$deltatrnsp}else{dSV <- NaN*tickdat$deltacomp}
+      allsubjmstrckdat$dSV[allsubjmstrckdat$cond == cond & allsubjmstrckdat$time == ti & allsubjmstrckdat$subid == subjlist[subj]] <- dSV
+    }
+  }
+}
+
+# plot dSV seperated
+  # range of dSV
+for (subj in subjlist)
+{
+  show(range(allsubjmstrckdat$dSV[allsubjmstrckdat$subid == subj]))
+}
+# seperate
+avgtrajectory <- c()
+for (cond in c('swpc','swpw','scpw'))
+{
+  for (ti in 1:100)
+  {
+    sngt.dat <- allsubjmstrckdat[allsubjmstrckdat$condition == cond & allsubjmstrckdat$time == ti,]
+    sngt.dat <- sngt.dat[!is.na(sngt.dat$dSV),] 
+    splits <- quantile(sngt.dat$dSV, seq(.1,1,.2), na.rm = TRUE)
+    sngt.dat$split <- 0
+    sngt.dat$split[sngt.dat$dSV <= splits[1]] <- -3
+    sngt.dat$split[sngt.dat$dSV > splits[1] & sngt.dat$dSV <= splits[2]] <- -2
+    sngt.dat$split[sngt.dat$dSV > splits[2] & sngt.dat$dSV <= splits[3]] <- -1
+    sngt.dat$split[sngt.dat$dSV > splits[3] & sngt.dat$dSV <= splits[4]] <- 1
+    sngt.dat$split[sngt.dat$dSV > splits[4] & sngt.dat$dSV <= splits[5]] <- 2
+    sngt.dat$split[sngt.dat$dSV > splits[5]] <- 3
+    tmpmean <- aggregate(vh ~ split, data = sngt.dat, FUN = mean)
+    tmpsd <- aggregate(vh ~ split, data = sngt.dat, FUN = sd)
+    tmplength <- aggregate(vh ~ split, data = sngt.dat, FUN = length)
+    avgtrajectory <- rbind(avgtrajectory, data.frame(cond, time = ti, mean = tmpmean$vh, se = tmpsd$vh/sqrt(tmplength$vh), split = tmpmean$split))
+  }
+}
+# plot
+library(RColorBrewer)
+# display.brewer.all(type = 'div')
+colorset <- brewer.pal(6,"RdBu")
+colorset <- colorset[6:1]
+for (cond in c('swpc','swpw','scpw'))
+{
+  ci <- 0
+  for (split in c(-3,-2,-1,1,2,3))
+  {
+    ci <- ci + 1
+    tmpdat <- avgtrajectory[avgtrajectory$cond == cond & avgtrajectory$split == split,]
+    if (split == -3){plot(tmpdat$time, tmpdat$mean, type = 'l', ylim = c(-.5,.5))}else{lines(tmpdat$time, tmpdat$mean)}
+    polygon(c(1:100,100:1),c(tmpdat$mean+tmpdat$se,tmpdat$mean[100:1]-tmpdat$se[100:1]), border = NA, col = colorset[ci])
+    lines(tmpdat$time, tmpdat$mean)
+  }
+}
+```
+
+

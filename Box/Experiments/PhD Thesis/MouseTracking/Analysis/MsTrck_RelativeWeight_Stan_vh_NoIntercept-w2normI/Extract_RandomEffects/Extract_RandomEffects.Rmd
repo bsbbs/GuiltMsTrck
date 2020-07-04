@@ -1,0 +1,83 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+Nsubj <- 37
+randeffs <- c()
+fixeffs <- c()
+condi <- 0
+for (cond in c('swpc','swpw','scpw'))
+{
+  condi <- condi + 1
+  load(sprintf('/Users/boshen/Box/Experiments/PhD Thesis/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/MsTrckRelativeWeightStan_%s.RData',cond))
+  for (time in 1:100)
+  {
+    if (time == 1){
+      mu_w1 <- estparams[sprintf('mu_w1'),]
+      mu_w2 <- estparams[sprintf('mu_w2'),]
+      mu_beta <- estparams[sprintf('mu_beta'),]
+      mu_b1 <- estparams[sprintf('mu_b1'),]
+      mu_b2 <- estparams[sprintf('mu_b2'),]
+    }
+    if (time >= 2){
+      mu_w1 <- estparams[sprintf('mu_w1%i',time-1),]
+      mu_w2 <- estparams[sprintf('mu_w2%i',time-1),]
+      mu_beta <- estparams[sprintf('mu_beta%i',time-1),]
+      mu_b1 <- estparams[sprintf('mu_b1%i',time-1),]
+      mu_b2 <- estparams[sprintf('mu_b2%i',time-1),]
+    }
+    fixeffs <- rbind(fixeffs, data.frame(condi, time = time, b1 = mu_b1, b2 = mu_b2, w1 = mu_w1, w2 = mu_w2, beta = mu_beta, cond))
+    for (subj in 1:Nsubj)
+    {
+      if (time == 1)
+      {
+        tmpw1 <- estparams[sprintf('w1[%i]',subj),]
+        tmpw2 <- estparams[sprintf('w2[%i]',subj),]
+        tmpbeta <- estparams[sprintf('beta[%i]',subj),]
+        tmpb1 <- estparams[sprintf('b1[%i]',subj),]
+        tmpb2 <- estparams[sprintf('b2[%i]',subj),]
+      }
+      if (time >=2)
+      {
+        tmpw1 <- estparams[sprintf('w1[%i]%i',subj,time-1),]
+        tmpw2 <- estparams[sprintf('w2[%i]%i',subj,time-1),]
+        tmpbeta <- estparams[sprintf('beta[%i]%i',subj,time-1),]
+        tmpb1 <- estparams[sprintf('b1[%i]%i',subj,time-1),]
+        tmpb2 <- estparams[sprintf('b2[%i]%i',subj,time-1),]
+      }
+      randeffs <- rbind(randeffs,data.frame(subid = subj, condi, time = time, w1 = tmpw1, w2 = tmpw2, beta = tmpbeta, b1 = tmpb1, b2 = tmpb2, cond))
+    }
+  }
+}
+randeffs <- randeffs[!is.na(randeffs$b1.mean),]
+save(randeffs, file = '/Users/boshen/Box/Experiments/PhD Thesis/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/Extract_RandomEffects/randeffs.RData')
+write.table(randeffs,file = "/Users/boshen/Box/Experiments/PhD Thesis/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/Extract_RandomEffects/randeffs.txt",row.names=F,append = FALSE, quote = F, sep = "\t", eol = "\n")
+
+save(fixeffs, file = '/Users/boshen/Box/Experiments/PhD Thesis/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/Extract_RandomEffects/fixeffs.RData')
+write.table(fixeffs,file = "/Users/boshen/Box/Experiments/PhD Thesis/MouseTracking/Analysis/MsTrck_RelativeWeight_Stan_vh_NoIntercept-w2normI/Extract_RandomEffects/fixeffs.txt",row.names=F,append = FALSE, quote = F, sep = "\t", eol = "\n")
+
+```
+
+# check plot
+```{r}
+for (condi in 1:3)
+{
+  for (subj in 1:37)
+  {
+    if (subj == 1) {plot(randeffs$b1.X50.[randeffs$subid == subj & randeffs$condi == condi], type = 'l', ylim = c(-1,1.5), ylab = 'b1 median(random-effects)', xlab = 'time bin')}
+    if (subj > 1) {lines(randeffs$b1.X50.[randeffs$subid == subj & randeffs$condi == condi])}
+  }
+  for (subj in 1:37)
+  {
+    if (subj == 1) {plot(randeffs$b2.X50.[randeffs$subid == subj & randeffs$condi == condi], type = 'l', ylim = c(-.5,.5),ylab = 'b2 median(random-effects)', xlab = 'time bin')}
+    if (subj > 1) {lines(randeffs$b2.X50.[randeffs$subid == subj & randeffs$condi == condi])}
+  }
+  
+}
+```
+
+
+
+
