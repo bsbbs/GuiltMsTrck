@@ -14,5 +14,12 @@ for g = 1:numel(glist)
     for s = 1:numel(sublist)
         indv_dir = fullfile(data_dir,glist{g}, 'MainTask', sublist{s});
         filelist = dir(fullfile(indv_dir,'block*.mat'));
+         for f = 1:numel(filelist)
+            hitline = strsplit(filelist(f).name,'hitline');
+            hitline = str2double(hitline{2}(1));
+            if hitline
+                load(fullfile(indv_dir,filelist(f).name));
+            end
+         end
     end
 end
