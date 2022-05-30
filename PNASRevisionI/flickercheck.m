@@ -1,9 +1,10 @@
 %% Check stopping/flickering rate during mouse-tracking task
 Ggldrive = '/Volumes/GoogleDrive/My Drive/GuiltMsTrck';
-datadir = '';
-data_dir = 'E:\ShenBo\MouseTracking\1111jifang\log';
-plot_dir = 'E:\ShenBo\MouseTracking\MsTrckPreprocessing\Preprocessing_cut_interpolate_100';
-mkdir(plot_dir);
+data_dir = fullfile(Ggldrive, 'data', '1111jifang', 'log');
+plot_dir = fullfile(Ggldrive, 'Preprocessing' 'Preprocessing_cut_interpolate_100');
+if ~exist(plot_dir, 'dir')
+    mkdir(plot_dir);
+end
 tmp = dir(fullfile(data_dir,'18*'));
 glist  = {tmp.name};
 for g = 1:numel(glist)
@@ -13,3 +14,5 @@ for g = 1:numel(glist)
     for s = 1:numel(sublist)
         indv_dir = fullfile(data_dir,glist{g}, 'MainTask', sublist{s});
         filelist = dir(fullfile(indv_dir,'block*.mat'));
+    end
+end
